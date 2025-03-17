@@ -4,7 +4,6 @@ from sqlmodel import SQLModel, Field, create_engine, Session, select
 from typing import Annotated
 from pydantic import BaseModel
 
-
 def get_session():
     with Session(engine) as session:
         yield session
@@ -25,7 +24,6 @@ def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,29 +33,45 @@ app.add_middleware(
 )
 
 class UserBase(BaseModel):
-    username: str
-    full_name: str = None
-    age: int
+    title: str
+    first_name: str
+    last_name: str
+    username: str = Field(nullable=True)
 
 class User(UserBase, SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
+    password: str = Field(nullable=True)
     email: str
-    password: str
-    bmi: float = Field(default=0)
 
 class UserPublic(UserBase):
     id: int = None
-    bmi: float = None
 
 class UserCreate(UserBase):
     password: str
     email: str
 
-class BMICalculate(BaseModel):
-    user_id: int
-    weight: float
-    height: float
+class AddressBase(BaseModel):
+    unit_number: str = Field(nullable=True)
+    line_1: str
+    line_2: str = Field(nullable=True)
+    city: str
+    postcode: str
 
+class Address(AddressBase, SQLModel, table=True):
+    id: int = Field(default=None, primary_key=True)
+
+class AppointmentBase(BaseModel):
+    time: str
+    date: str
+    appointment_type: str
+    product: str
+    user_id: int = Field(default=None, foreign_key="user.id")
+    address_id: int = Field(default=None, foreign_key="address.id")
+    consultation_id: int = Field(default=None, foreign_key="appointment.id", nullable=True)
+
+class Appointment(AppointmentBase, SQLModel, table=True):
+    id: int = Field(default=None, primary_key=True)
+    
 @app.get("/getUserByName")
 def get_name(username: str):
     with Session(engine) as session:
@@ -91,6 +105,16 @@ def get_user(user_id: int):
         user = session.get(User, user_id)
     return user
 
+@app.get("/Login")
+def login(username: str, password: str):
+    user = get_name(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.password == password:
+        return True
+    else:
+        return False
+
 @app.delete("/DeleteUser/{user_id}")
 def delete_user(user_id: int):
     with Session(engine) as session:
@@ -101,16 +125,44 @@ def delete_user(user_id: int):
         session.commit()
     return {"message": "User deleted successfully"}
 
-@app.post("/CalculateBMI", )
-def calculate_bmi(bmi: BMICalculate):
-    CalculatedBMI = bmi.weight / (bmi.height ** 2)
+@app.post("/CreateAddress")
+def create_address(address: AddressBase):
+    address = Address.model_validate(address)
     with Session(engine) as session:
-        user = session.get(User, bmi.user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        user.bmi = CalculatedBMI
-        session.add(user)
+        session.add(address)
         session.commit()
-        session.refresh(user)
-    return CalculatedBMI
+        session.refresh(address)
+    return address
 
+@app.get("/GetAddress/{address_id}")
+def get_address(address_id: int):
+    with Session(engine) as session:
+        address = session.get(Address, address_id)
+    return address
+
+@app.get("/GetAddresses/", response_model=list[Address])
+def get_addresses():
+    with Session(engine) as session:
+        addresses = session.exec(select(Address)).all()
+    return addresses
+
+@app.post("/CreateAppointment")
+def create_appointment(appointment: AppointmentBase):
+    appointment = Appointment.model_validate(appointment)
+    with Session(engine) as session:
+        session.add(appointment)
+        session.commit()
+        session.refresh(appointment)
+    return appointment
+
+@app.get("/GetAppointment/{appointment_id}")
+def get_appointment(appointment_id: int):
+    with Session(engine) as session:
+        appointment = session.get(Appointment, appointment_id)
+    return appointment
+
+@app.get("/GetAppointments/", response_model=list[Appointment])
+def get_appointments():
+    with Session(engine) as session:
+        appointments = session.exec(select(Appointment)).all()
+    return appointments
