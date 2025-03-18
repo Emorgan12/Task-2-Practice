@@ -10,12 +10,14 @@ def get_session():
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
+#define database name
 sqlite_file_name = "database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 connect_args = {"check_same_thread": False}
 engine = create_engine(sqlite_url, connect_args=connect_args)
 
+#create tables and database on startup
 def lifespan(app: FastAPI):
     print("Starting up")
     SQLModel.metadata.create_all(engine)
@@ -24,6 +26,7 @@ def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+#allow all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,6 +41,7 @@ class UserBase(BaseModel):
     last_name: str
     username: str = Field(nullable=True)
 
+#user model in table
 class User(UserBase, SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     password: str = Field(nullable=True)
@@ -57,6 +61,7 @@ class AddressBase(BaseModel):
     city: str
     postcode: str
 
+#address model in table
 class Address(AddressBase, SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
 
@@ -69,9 +74,11 @@ class AppointmentBase(BaseModel):
     address_id: int = Field(default=None, foreign_key="address.id")
     consultation_id: int = Field(default=None, foreign_key="appointment.id", nullable=True)
 
+#appointment model in table
 class Appointment(AppointmentBase, SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
-    
+
+#get user by name, check if exists
 @app.get("/getUserByName")
 def get_name(username: str):
     with Session(engine) as session:
@@ -81,6 +88,7 @@ def get_name(username: str):
         else:
             return user
 
+#create user
 @app.post("/CreateUser", response_model=UserPublic)
 def create_user(user: UserCreate):
     user = User.model_validate(user)
@@ -93,18 +101,21 @@ def create_user(user: UserCreate):
         session.refresh(user)
     return user
 
+#get all users
 @app.get("/GetUsers/", response_model=list[UserPublic])
 def get_users():
     with Session(engine) as session:
         users = session.exec(select(User)).all()
     return users
 
+#get user by id
 @app.get("/GetUser/{user_id}", response_model=UserPublic)
 def get_user(user_id: int):
     with Session(engine) as session:
         user = session.get(User, user_id)
     return user
 
+#login with username and password
 @app.get("/Login")
 def login(username: str, password: str):
     user = get_name(username)
@@ -115,6 +126,7 @@ def login(username: str, password: str):
     else:
         return False
 
+#delete user by id
 @app.delete("/DeleteUser/{user_id}")
 def delete_user(user_id: int):
     with Session(engine) as session:
@@ -125,6 +137,7 @@ def delete_user(user_id: int):
         session.commit()
     return {"message": "User deleted successfully"}
 
+#create address
 @app.post("/CreateAddress")
 def create_address(address: AddressBase):
     address = Address.model_validate(address)
@@ -134,12 +147,14 @@ def create_address(address: AddressBase):
         session.refresh(address)
     return address
 
+#get address by id
 @app.get("/GetAddress/{address_id}")
 def get_address(address_id: int):
     with Session(engine) as session:
         address = session.get(Address, address_id)
     return address
 
+#get all addresses
 @app.get("/GetAddresses/", response_model=list[Address])
 def get_addresses():
     with Session(engine) as session:
